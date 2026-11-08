@@ -1,0 +1,17 @@
+{
+  "name": "MyLife OS - Personal & Client Operating System",
+  "short_name": "MyLife OS",
+  "description": "Your private, intelligent operating system for tracking, client collaboration, and AI automation.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#090d16",
+  "theme_color": "#4f46e5",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
