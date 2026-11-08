@@ -3,13 +3,16 @@
   "short_name": "MyLife OS",
   "description": "Your private, intelligent operating system for tracking, client collaboration, and AI automation.",
   "start_url": "/dashboard",
+  "id": "/dashboard",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#090d16",
   "theme_color": "#4f46e5",
   "icons": [
     {
       "src": "/icon.svg",
-      "sizes": "any",
+      "sizes": "192x192 512x512 any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
     }
