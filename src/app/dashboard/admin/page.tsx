@@ -392,7 +392,8 @@ export default function AdminPage() {
   };
 
   const copyBioText = () => {
-    const text = `🚀 Transform your life with MyLife OS! 12 apps in 1 + Antigravity AI Voice Assistant. Try 7 days FREE, then only ₹29/month! Get your account here: ${typeof window !== "undefined" ? window.location.origin : ""}/login`;
+    const origin = typeof window !== "undefined" ? window.location.origin : "https://mylife-os-silk.vercel.app";
+    const text = `🚀 Transform your life with MyLife OS! 12 apps in 1 + AI Voice Assistant. Try 7 days FREE, then only ₹29/month!\n\n🌐 Web Link: ${origin}/login\n📱 Direct Android App Download: ${origin}/MyLife-OS.apk`;
     void navigator.clipboard.writeText(text);
     setCopiedBio(true);
     setTimeout(() => setCopiedBio(false), 3000);
@@ -1020,8 +1021,9 @@ export default function AdminPage() {
             <p className="muted text-xs leading-relaxed">
               Copy this promotional pitch and link. Paste it directly in your Instagram bio or send it in DMs so users can register, try 7 days free, and pay ₹29/month!
             </p>
-            <div className="rounded-xl bg-black/30 p-3 font-mono text-xs text-gray-300">
-              🚀 Transform your life with MyLife OS! 12 apps in 1 + AI Voice Assistant. Try 7 days FREE, then only ₹29/month! Get your account: {typeof window !== "undefined" ? window.location.origin : ""}/login
+            <div className="rounded-xl bg-black/30 p-3 font-mono text-xs text-gray-300 space-y-1">
+              <div>🚀 Transform your life with MyLife OS! 12 apps in 1 + AI Voice Assistant. Try 7 days FREE, then only ₹29/month!</div>
+              <div className="text-emerald-400 font-bold">📱 Direct Android App Download: {typeof window !== "undefined" ? window.location.origin : "https://mylife-os-silk.vercel.app"}/MyLife-OS.apk</div>
             </div>
             <button onClick={copyBioText} className="btn btn-primary text-xs font-bold flex items-center gap-1.5">
               {copiedBio ? <Check size={14} /> : <Copy size={14} />}

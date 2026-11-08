@@ -12,6 +12,7 @@ import {
   Clock,
   MessageCircle,
   ChevronRight,
+  Download,
 } from "lucide-react";
 
 export default function LoginPage() {
@@ -308,6 +309,20 @@ export default function LoginPage() {
             )}
           </form>
         )}
+
+        {/* Direct Android APK Download Button */}
+        <div className="mt-5 pt-4 border-t border-white/10 text-center">
+          <a
+            href="/MyLife-OS.apk"
+            download="MyLife-OS.apk"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-xs font-bold text-emerald-400 hover:bg-emerald-500/20 transition shadow-sm"
+          >
+            <Download size={15} /> Download Native Android App (.apk)
+          </a>
+          <p className="mt-1.5 text-[10px] muted">
+            Direct 1-tap download for Android without browser shortcuts
+          </p>
+        </div>
 
         {/* Footer */}
         <div className="mt-6 border-t pt-4 text-center text-[11px] muted" style={{ borderColor: "var(--line)" }}>
