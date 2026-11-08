@@ -298,8 +298,14 @@ function parseSingleIntent(seg: string, fullContext: string): ParsedEntryAction 
     };
   }
 
-  // 4. TASKS MODULE
+  // 4. TASKS MODULE (Including "done my work" / "completed work")
   if (
+    lower.includes("done my work") ||
+    lower.includes("finished work") ||
+    lower.includes("completed my work") ||
+    lower.includes("work is done") ||
+    lower.includes("work done") ||
+    lower.includes("finished tasks") ||
     lower.includes("todo") ||
     lower.includes("to-do") ||
     lower.includes("task") ||
@@ -310,26 +316,33 @@ function parseSingleIntent(seg: string, fullContext: string): ParsedEntryAction 
     lower.includes("assignment") ||
     lower.includes("deadline")
   ) {
+    const isCompletedWork =
+      lower.includes("done") || lower.includes("finished") || lower.includes("completed");
+
     let priority = "Medium";
     if (lower.includes("urgent") || lower.includes("important") || lower.includes("high priority") || lower.includes("asap")) priority = "High";
     else if (lower.includes("low priority") || lower.includes("whenever")) priority = "Low";
 
-    let cleanTitle = seg.replace(/^(?:task:?|todo:?|need to|have to|remind me to)\s*/i, "");
+    let cleanTitle = isCompletedWork
+      ? "Daily Work & Objectives Completed"
+      : seg.replace(/^(?:task:?|todo:?|need to|have to|remind me to)\s*/i, "");
     if (cleanTitle.length > 70) cleanTitle = cleanTitle.slice(0, 67) + "...";
 
     return {
       type: "CREATE_ENTRY",
       module: "tasks",
-      title: cleanTitle || "New Task",
+      title: cleanTitle || "Daily Work",
       details: seg,
       entry_date: date,
       data: {
         priority: priority,
-        status: "To do",
+        status: isCompletedWork ? "Done" : "To do",
         due_date: date,
         notes: seg,
       },
-      explanation: `Created task "${cleanTitle}" with ${priority} priority.`,
+      explanation: isCompletedWork
+        ? `Great job, Shyam! Marked your daily work as completed in Tasks.`
+        : `Created task "${cleanTitle}" with ${priority} priority.`,
     };
   }
 

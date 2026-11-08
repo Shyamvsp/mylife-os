@@ -326,6 +326,34 @@ export default function AdminPage() {
     }
   };
 
+  const handleUpdateUserAction = async (userId: string, action: "activate_pro" | "extend_trial" | "reset_password") => {
+    let newPassword = "";
+    if (action === "reset_password") {
+      const promptPass = prompt("Enter new password for this user (min 6 characters):", "NewPass@2026");
+      if (!promptPass) return;
+      newPassword = promptPass;
+    }
+
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, action, newPassword }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        if (action === "activate_pro") alert("✓ Pro Subscription (₹29/mo) activated for this user!");
+        else if (action === "extend_trial") alert("✓ Trial extended +7 days for this user!");
+        else if (action === "reset_password") alert(`✓ Password reset to "${newPassword}". Share this with the user.`);
+        void loadUsers();
+      } else {
+        alert(data.error || "Failed to update user.");
+      }
+    } catch {
+      alert("Network error.");
+    }
+  };
+
   const saveUpiSettings = (e: React.FormEvent) => {
     e.preventDefault();
     if (typeof window !== "undefined") {
@@ -354,6 +382,13 @@ export default function AdminPage() {
     void navigator.clipboard.writeText(text);
     setCopiedCreds(true);
     setTimeout(() => setCopiedCreds(false), 3000);
+  };
+
+  const shareOnWhatsApp = (userEmail: string, userPass: string, userName: string) => {
+    const origin = typeof window !== "undefined" ? window.location.origin : "https://mylife-os.vercel.app";
+    const msg = `🎉 Hi ${userName || "there"}! Your MyLife OS 7-Day Free Trial Account has been APPROVED by Admin Shyam!\n\n🌐 Login Link: ${origin}/login\n📧 Email: ${userEmail}\n🔑 Password: ${userPass}\n\n✨ All 12 apps and your Antigravity AI Voice Assistant are now active. Enjoy your free week!`;
+    const url = `https://wa.me/?text=${encodeURIComponent(msg)}`;
+    window.open(url, "_blank");
   };
 
   const copyBioText = () => {
@@ -477,7 +512,8 @@ export default function AdminPage() {
                 <tr className="border-b text-gray-400" style={{ borderColor: "var(--line)" }}>
                   <th className="py-2.5 px-3">Applicant Name</th>
                   <th className="py-2.5 px-3">Email Address</th>
-                  <th className="py-2.5 px-3">Note / Source</th>
+                  <th className="py-2.5 px-3">Requested Password</th>
+                  <th className="py-2.5 px-3">Note / Phone</th>
                   <th className="py-2.5 px-3">Status</th>
                   <th className="py-2.5 px-3 text-right">Approval Action</th>
                 </tr>
@@ -486,7 +522,12 @@ export default function AdminPage() {
                 {trialRequests.map((t) => (
                   <tr key={t.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition">
                     <td className="py-3 px-3 font-semibold">{t.name}</td>
-                    <td className="py-3 px-3 font-mono text-gray-400">{t.email}</td>
+                    <td className="py-3 px-3 font-mono text-gray-300">{t.email}</td>
+                    <td className="py-3 px-3 font-mono">
+                      <span className="rounded-md border border-white/10 bg-black/20 dark:bg-white/5 px-2 py-0.5 text-[11px] text-indigo-300">
+                        {t.password || "••••••••"}
+                      </span>
+                    </td>
                     <td className="py-3 px-3 text-gray-400">{t.note}</td>
                     <td className="py-3 px-3">
                       {t.status === "approved" ? (
@@ -508,7 +549,7 @@ export default function AdminPage() {
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             onClick={() => handleAcceptTrial(t.id, t.email)}
-                            className="btn btn-primary !py-1 !px-2.5 text-xs font-bold !bg-emerald-600 hover:!bg-emerald-700 flex items-center gap-1"
+                            className="btn btn-primary !py-1 !px-2.5 text-xs font-bold !bg-emerald-600 hover:!bg-emerald-700 flex items-center gap-1 shadow-sm"
                           >
                             <Check size={13} /> Grant 7-Day Trial
                           </button>
@@ -521,7 +562,26 @@ export default function AdminPage() {
                           </button>
                         </div>
                       ) : (
-                        <span className="text-[11px] muted">Processed</span>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => shareOnWhatsApp(t.email, t.password || "MyLife@2026", t.name)}
+                            className="btn btn-ghost !py-1 !px-2 text-[11px] font-semibold text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-1 rounded-lg"
+                            title="Send approval details via WhatsApp"
+                          >
+                            <MessageCircle size={13} /> WhatsApp
+                          </button>
+                          <button
+                            onClick={() => {
+                              const msg = `🎉 Hi ${t.name}! Your MyLife OS 7-Day Free Trial has been APPROVED by Admin Shyam!\n\n🌐 Login: ${window.location.origin}/login\n📧 Email: ${t.email}\n🔑 Password: ${t.password || "MyLife@2026"}\n\nAll 12 apps and AI Agent are active!`;
+                              void navigator.clipboard.writeText(msg);
+                              alert(`Copied login details for ${t.email} to clipboard!`);
+                            }}
+                            className="btn btn-ghost !p-1 text-gray-400 hover:text-white"
+                            title="Copy login details"
+                          >
+                            <Copy size={13} />
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -757,13 +817,22 @@ export default function AdminPage() {
                   <div><strong>Email:</strong> {createdUserNotice.email}</div>
                   <div><strong>Password:</strong> {createdUserNotice.pass}</div>
                 </div>
-                <button
-                  onClick={copyCredentialsText}
-                  className="btn btn-primary w-full !py-1.5 text-xs flex items-center justify-center gap-1.5"
-                >
-                  {copiedCreds ? <Check size={13} /> : <Copy size={13} />}
-                  {copiedCreds ? "Copied Credentials!" : "Copy Details to Send via WhatsApp/DM"}
-                </button>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button
+                    onClick={() => shareOnWhatsApp(createdUserNotice.email, createdUserNotice.pass, createdUserNotice.name)}
+                    className="btn btn-primary flex-1 !py-1.5 text-xs !bg-emerald-600 hover:!bg-emerald-700 flex items-center justify-center gap-1.5 font-bold"
+                  >
+                    <MessageCircle size={14} /> Send via WhatsApp
+                  </button>
+                  <button
+                    onClick={copyCredentialsText}
+                    className="btn btn-ghost flex-1 !py-1.5 text-xs flex items-center justify-center gap-1.5 border"
+                    style={{ borderColor: "var(--line)" }}
+                  >
+                    {copiedCreds ? <Check size={13} /> : <Copy size={13} />}
+                    {copiedCreds ? "Copied!" : "Copy Text"}
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -906,13 +975,31 @@ export default function AdminPage() {
 
                           <td className="py-3 px-3 text-right">
                             {!isOwner && (
-                              <button
-                                onClick={() => handleDeleteUser(u.id, u.email)}
-                                className="btn btn-ghost !p-1.5 text-rose-500 hover:bg-rose-500/10 rounded-lg"
-                                title="Delete user"
-                              >
-                                <Trash2 size={15} />
-                              </button>
+                              <div className="flex items-center justify-end gap-1">
+                                {!u.is_subscribed && (
+                                  <button
+                                    onClick={() => handleUpdateUserAction(u.id, "activate_pro")}
+                                    className="btn btn-ghost !py-1 !px-2 text-[11px] font-bold text-emerald-400 hover:bg-emerald-500/10 rounded-lg"
+                                    title="Grant Pro Access (₹29/mo)"
+                                  >
+                                    + Pro ₹29
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => handleUpdateUserAction(u.id, "extend_trial")}
+                                  className="btn btn-ghost !py-1 !px-2 text-[11px] font-semibold text-indigo-400 hover:bg-indigo-500/10 rounded-lg"
+                                  title="Extend Trial by 7 days"
+                                >
+                                  +7d
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteUser(u.id, u.email)}
+                                  className="btn btn-ghost !p-1.5 text-rose-500 hover:bg-rose-500/10 rounded-lg"
+                                  title="Delete user"
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              </div>
                             )}
                           </td>
                         </tr>

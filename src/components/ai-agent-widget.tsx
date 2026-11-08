@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Sparkles, Mic, MicOff, Send, X, Check, ArrowRight, Zap, RefreshCw, Globe } from "lucide-react";
+import { Sparkles, Mic, MicOff, Send, X, Check, ArrowRight, Zap, RefreshCw, Globe, Minus, Maximize2, Volume2, VolumeX } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { MODULES } from "@/lib/modules";
 import { parseNaturalLanguageCommand, type AgentResult, type ParsedEntryAction } from "@/lib/ai-agent";
@@ -53,6 +53,8 @@ interface ISpeechRecognition {
 
 export function AiAgentWidget() {
   const [open, setOpen] = useState(false);
+  const [minimized, setMinimized] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [input, setInput] = useState("");
   const [autoSave, setAutoSave] = useState(true);
   const [listening, setListening] = useState(false);
@@ -67,7 +69,9 @@ export function AiAgentWidget() {
   const isListeningRef = useRef(false);
   const finalTranscriptRef = useRef("");
   const restartTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
+  const handleSendRef = useRef<((customPrompt?: string) => Promise<void>) | null>(null);
 
   // Web Audio Visualizer references
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -199,26 +203,67 @@ export function AiAgentWidget() {
     }
   }, [stopAudioVisualizer]);
 
-  const stopListening = useCallback(() => {
-    isListeningRef.current = false;
-    setListening(false);
-    setMicStatusText("");
-    if (restartTimerRef.current) {
-      clearTimeout(restartTimerRef.current);
-      restartTimerRef.current = null;
-    }
-
-    if (recognitionRef.current) {
+  // Audible Text-to-Speech Voice Responses
+  const speakVoiceResponse = useCallback(
+    (text: string) => {
+      if (typeof window === "undefined" || !("speechSynthesis" in window) || !voiceEnabled) return;
       try {
-        recognitionRef.current.stop();
-      } catch {
-        // ignore
+        window.speechSynthesis.cancel();
+        // Remove markdown formatting
+        const clean = text.replace(/[*_#`[\]()•]/g, "").trim();
+        if (!clean) return;
+        const utterance = new SpeechSynthesisUtterance(clean);
+        utterance.lang = speechLang;
+        const voices = window.speechSynthesis.getVoices();
+        const matchingVoice =
+          voices.find((v) => v.lang.toLowerCase() === speechLang.toLowerCase()) ||
+          voices.find((v) => v.lang.startsWith(speechLang.slice(0, 2))) ||
+          voices[0];
+        if (matchingVoice) utterance.voice = matchingVoice;
+        utterance.rate = 1.02;
+        utterance.pitch = 1.0;
+        window.speechSynthesis.speak(utterance);
+      } catch (err) {
+        console.warn("TTS speech error:", err);
       }
-      recognitionRef.current = null;
-    }
+    },
+    [voiceEnabled, speechLang]
+  );
 
-    stopAudioVisualizer();
-  }, [stopAudioVisualizer]);
+  const stopListening = useCallback(
+    (autoSubmit = false) => {
+      isListeningRef.current = false;
+      setListening(false);
+      setMicStatusText("");
+      if (restartTimerRef.current) {
+        clearTimeout(restartTimerRef.current);
+        restartTimerRef.current = null;
+      }
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
+
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch {
+          // ignore
+        }
+        recognitionRef.current = null;
+      }
+
+      stopAudioVisualizer();
+
+      if (autoSubmit) {
+        const textToSubmit = (finalTranscriptRef.current || input).trim();
+        if (textToSubmit && handleSendRef.current) {
+          void handleSendRef.current(textToSubmit);
+        }
+      }
+    },
+    [stopAudioVisualizer, input]
+  );
 
   const initRecognition = useCallback(() => {
     if (typeof window === "undefined") return null;
@@ -261,6 +306,14 @@ export function AiAgentWidget() {
       if (combined) {
         setInput(combined);
       }
+
+      // Auto-submit on 3 seconds silence after speech
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = setTimeout(() => {
+        if (isListeningRef.current && (finalTranscriptRef.current || combined).trim()) {
+          stopListening(true);
+        }
+      }, 3000);
     };
 
     recog.onerror = (event: ISpeechErrorEvent) => {
@@ -336,7 +389,7 @@ export function AiAgentWidget() {
 
   const toggleMic = () => {
     if (listening) {
-      stopListening();
+      stopListening(true);
     } else {
       void startListening();
     }
@@ -414,6 +467,20 @@ export function AiAgentWidget() {
 
       setMessages((prev) => [...prev, agentMsg]);
 
+      // Audible voice reply from the AI
+      const voiceSpeech = results
+        .map((r) => {
+          if (r.type === "CREATE_ENTRY") return r.explanation;
+          if (r.type === "CHAT_RESPONSE") return r.message;
+          return "";
+        })
+        .filter(Boolean)
+        .join(". ");
+
+      if (voiceSpeech) {
+        speakVoiceResponse(voiceSpeech);
+      }
+
       if (autoSave) {
         for (let i = 0; i < results.length; i++) {
           const res = results[i];
@@ -462,6 +529,8 @@ export function AiAgentWidget() {
                 timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
               },
             ]);
+
+            speakVoiceResponse(replyText.replace(/•/g, ""));
           }
         }
       }
@@ -471,6 +540,10 @@ export function AiAgentWidget() {
       setBusy(false);
     }
   };
+
+  useEffect(() => {
+    handleSendRef.current = handleSend;
+  });
 
   const quickVoiceChips = [
     { label: "🏋️ Chest Workout 45m", prompt: "Today I did 45 mins chest workout and 100 pushups burned 350 calories" },
@@ -483,32 +556,95 @@ export function AiAgentWidget() {
 
   return (
     <>
-      {/* Floating Antigravity AI Agent Trigger Button */}
-      <div className="fixed bottom-5 right-5 z-40 flex items-center gap-2">
-        <button
-          onClick={() => setOpen(true)}
-          className="group relative flex items-center gap-2.5 overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 px-4 py-3 text-white shadow-xl shadow-indigo-500/25 transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-indigo-500/40 active:scale-95"
-          aria-label="Open Antigravity AI Agent"
-        >
-          <span className="relative flex h-3 w-3">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75"></span>
-            <span className="relative inline-flex h-3 w-3 rounded-full bg-cyan-300"></span>
-          </span>
-          <Sparkles className="animate-spin-slow transition-transform group-hover:rotate-12" size={19} />
-          <span className="font-semibold tracking-wide text-sm sm:inline">AI Agent</span>
-          <Mic size={16} className="text-indigo-200" />
-        </button>
-      </div>
+      {/* Floating Antigravity AI Agent Trigger Button (when closed) */}
+      {!open && (
+        <div className="fixed bottom-5 right-5 z-40 flex items-center gap-2">
+          <button
+            onClick={() => {
+              setOpen(true);
+              setMinimized(false);
+            }}
+            className="group relative flex items-center gap-2.5 overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 px-4 py-3 text-white shadow-xl shadow-indigo-500/25 transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-indigo-500/40 active:scale-95"
+            aria-label="Open Antigravity AI Agent"
+          >
+            <span className="relative flex h-3 w-3">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75"></span>
+              <span className="relative inline-flex h-3 w-3 rounded-full bg-cyan-300"></span>
+            </span>
+            <Sparkles className="animate-spin-slow transition-transform group-hover:rotate-12" size={19} />
+            <span className="font-semibold tracking-wide text-sm sm:inline">AI Agent</span>
+            <Mic size={16} className="text-indigo-200" />
+          </button>
+        </div>
+      )}
 
-      {/* AI Agent Modal / Drawer */}
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200">
+      {/* Docked Minimized Mode (Always docked in bottom corner so it never disappears unexpectedly) */}
+      {open && minimized && (
+        <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-2xl border border-indigo-500/30 bg-gray-950/95 backdrop-blur-md p-2 shadow-2xl text-white animate-in slide-in-from-bottom-2">
+          <div className="flex items-center gap-2 px-2.5">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className={`inline-flex h-full w-full rounded-full ${listening ? "animate-ping bg-rose-400" : "bg-cyan-400"}`}></span>
+              <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${listening ? "bg-rose-500" : "bg-cyan-300"}`}></span>
+            </span>
+            <span className="text-xs font-bold">{listening ? "🎙️ Recording Voice..." : "AI Agent"}</span>
+          </div>
+
+          {/* Quick Voice Mic Button */}
+          <button
+            type="button"
+            onClick={toggleMic}
+            className={`rounded-xl p-2 transition ${
+              listening ? "bg-rose-600 text-white animate-pulse shadow-md shadow-rose-600/40" : "bg-white/10 hover:bg-white/20"
+            }`}
+            title={listening ? "Finish & Submit Voice" : "Tap to Speak Voice Command"}
+          >
+            {listening ? <MicOff size={15} /> : <Mic size={15} />}
+          </button>
+
+          {/* Expand to Full Chat */}
+          <button
+            type="button"
+            onClick={() => setMinimized(false)}
+            className="rounded-xl p-1.5 bg-indigo-600 hover:bg-indigo-700 text-white transition flex items-center gap-1 text-xs font-semibold px-2.5 shadow-md shadow-indigo-600/30"
+            title="Expand to Full Chat Window"
+          >
+            <Maximize2 size={13} /> Expand
+          </button>
+
+          {/* Close */}
+          <button
+            type="button"
+            onClick={() => {
+              stopListening(false);
+              setOpen(false);
+              setMinimized(false);
+            }}
+            className="rounded-xl p-1.5 hover:bg-white/10 text-gray-400 hover:text-white transition"
+            title="Close AI Agent"
+          >
+            <X size={15} />
+          </button>
+        </div>
+      )}
+
+      {/* AI Agent Full Window / Drawer (renders when open and not minimized) */}
+      {open && !minimized && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200"
+          onClick={(e) => {
+            // Minimize instead of closing when clicking outside backdrop so user never loses state!
+            if (e.target === e.currentTarget && !listening) {
+              setMinimized(true);
+            }
+          }}
+        >
           <div
-            className="flex h-[92vh] sm:h-[670px] w-full max-w-xl flex-col rounded-t-3xl sm:rounded-3xl border border-white/10 shadow-2xl overflow-hidden"
+            className="flex h-[92vh] sm:h-[680px] w-full max-w-xl flex-col rounded-t-3xl sm:rounded-3xl border border-white/10 shadow-2xl overflow-hidden"
             style={{ background: "var(--card)" }}
+            onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between border-b px-5 py-3.5" style={{ borderColor: "var(--line)" }}>
+            <div className="flex items-center justify-between border-b px-4 sm:px-5 py-3" style={{ borderColor: "var(--line)" }}>
               <div className="flex items-center gap-3">
                 <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-500/20">
                   <Sparkles size={20} />
@@ -524,7 +660,21 @@ export function AiAgentWidget() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                {/* Voice Audio Reply Toggle (Audible SpeechSynthesis) */}
+                <button
+                  type="button"
+                  onClick={() => setVoiceEnabled(!voiceEnabled)}
+                  className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-bold transition ${
+                    voiceEnabled ? "text-indigo-400 border-indigo-500/30" : "text-gray-500"
+                  }`}
+                  style={{ borderColor: "var(--line)", background: "var(--background)" }}
+                  title={voiceEnabled ? "Audible Voice Replies ON (tap to mute)" : "Audible Voice Replies MUTED (tap to unmute)"}
+                >
+                  {voiceEnabled ? <Volume2 size={13} className="text-indigo-400" /> : <VolumeX size={13} />}
+                  <span className="hidden sm:inline">{voiceEnabled ? "Voice ON" : "Muted"}</span>
+                </button>
+
                 {/* Accent language toggle */}
                 <button
                   type="button"
@@ -542,7 +692,7 @@ export function AiAgentWidget() {
                 {/* Auto-save vs Review Toggle */}
                 <button
                   onClick={() => setAutoSave(!autoSave)}
-                  className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition ${
+                  className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium transition ${
                     autoSave
                       ? "bg-indigo-600/15 text-indigo-600 dark:text-indigo-400"
                       : "bg-black/5 dark:bg-white/5 text-gray-500"
@@ -553,10 +703,23 @@ export function AiAgentWidget() {
                   <span className="hidden sm:inline">{autoSave ? "Auto-Save" : "Review"}</span>
                 </button>
 
+                {/* Minimize Button */}
+                <button
+                  type="button"
+                  onClick={() => setMinimized(true)}
+                  className="btn btn-ghost !p-2 rounded-xl text-gray-400 hover:text-gray-100"
+                  title="Minimize AI Agent"
+                  aria-label="Minimize Agent"
+                >
+                  <Minus size={18} />
+                </button>
+
+                {/* Close Button */}
                 <button
                   onClick={() => {
-                    stopListening();
+                    stopListening(false);
                     setOpen(false);
+                    setMinimized(false);
                   }}
                   className="btn btn-ghost !p-2 rounded-xl text-gray-400 hover:text-gray-100"
                   aria-label="Close Agent"
@@ -714,12 +877,13 @@ export function AiAgentWidget() {
                     </span>
                   </div>
 
+                  {/* Done Speaking: Auto-submits immediately */}
                   <button
                     type="button"
-                    onClick={stopListening}
-                    className="rounded-lg bg-emerald-600 text-white px-3 py-1 text-xs font-bold hover:bg-emerald-700 transition flex items-center gap-1 shadow-sm"
+                    onClick={() => stopListening(true)}
+                    className="rounded-lg bg-emerald-600 text-white px-3.5 py-1 text-xs font-bold hover:bg-emerald-700 transition flex items-center gap-1 shadow-md shadow-emerald-600/30 active:scale-95"
                   >
-                    <Check size={13} /> Done Speaking
+                    <Check size={13} /> Done Speaking (Submit)
                   </button>
                 </div>
 
@@ -748,7 +912,7 @@ export function AiAgentWidget() {
                       ? "bg-rose-500 text-white shadow-lg shadow-rose-500/30 scale-105"
                       : "btn-ghost text-gray-400 hover:text-indigo-500"
                   }`}
-                  title={listening ? "Click to stop recording" : "Click to speak with AI"}
+                  title={listening ? "Click to finish and submit voice command" : "Click to speak with AI"}
                 >
                   {listening ? <MicOff size={20} /> : <Mic size={20} />}
                   {listening && (

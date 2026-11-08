@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { ModuleConfig, ModuleKey } from "@/lib/modules";
 import { Share2, Plus, Search, Trash2, Pencil, RefreshCw, X, Save } from "lucide-react";
 import { ModuleBackground } from "@/components/module-background";
+import { ModuleFeatures } from "@/components/module-features";
 
 type Entry = {
   id: string;
@@ -157,6 +158,32 @@ export function ModuleWorkspace({ moduleKey, config }: { moduleKey: ModuleKey; c
     setNotice("Read-only share link copied. Anyone with the link can view this one record.");
   }
 
+  async function handleQuickAdd(quickTitle: string, quickData: Record<string, string>) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setNotice("Please sign in to log activity.");
+      return;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    const { error } = await supabase.from("entries").insert({
+      user_id: user.id,
+      module: moduleKey,
+      title: quickTitle,
+      details: null,
+      entry_date: today,
+      data: quickData || {},
+      is_archived: false,
+    });
+    if (error) {
+      setNotice(`Failed to save: ${error.message}`);
+    } else {
+      setNotice(`✓ Added "${quickTitle}" to ${config.title}`);
+      void load();
+    }
+  }
+
   const visible = items.filter((i) =>
     `${i.title} ${i.details ?? ""} ${JSON.stringify(i.data)}`.toLowerCase().includes(query.toLowerCase())
   );
@@ -194,6 +221,9 @@ export function ModuleWorkspace({ moduleKey, config }: { moduleKey: ModuleKey; c
           {notice}
         </div>
       )}
+
+      {/* 12 Interactive App Widgets & Features */}
+      <ModuleFeatures moduleKey={moduleKey} onQuickAdd={handleQuickAdd} />
 
       {/* Records Container */}
       <div className="panel p-4 sm:p-6">

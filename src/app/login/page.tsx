@@ -10,10 +10,7 @@ import {
   Mail,
   Lock,
   Clock,
-  CheckCircle2,
-  Send,
   MessageCircle,
-  HelpCircle,
   ChevronRight,
 } from "lucide-react";
 

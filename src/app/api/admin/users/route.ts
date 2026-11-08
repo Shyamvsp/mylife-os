@@ -144,3 +144,61 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export async function PATCH(request: Request) {
+  const admin = await verifyAdmin();
+  if (!admin) {
+    return NextResponse.json({ error: "Unauthorized: Admin access required" }, { status: 403 });
+  }
+
+  try {
+    const body = await request.json();
+    const { userId, action, newPassword } = body;
+
+    if (!userId || !action) {
+      return NextResponse.json({ error: "userId and action are required" }, { status: 400 });
+    }
+
+    const supabaseAdmin = createAdminClient();
+
+    if (action === "activate_pro") {
+      const { data, error } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+        user_metadata: {
+          is_subscribed: true,
+          subscription_status: "pro",
+        },
+      });
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+      return NextResponse.json({ success: true, user: data.user });
+    }
+
+    if (action === "extend_trial") {
+      const newTrialEnds = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { data, error } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+        user_metadata: {
+          is_subscribed: false,
+          subscription_status: "trial",
+          trial_ends_at: newTrialEnds,
+        },
+      });
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+      return NextResponse.json({ success: true, user: data.user });
+    }
+
+    if (action === "reset_password") {
+      if (!newPassword || newPassword.length < 6) {
+        return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 });
+      }
+      const { data, error } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+        password: newPassword,
+      });
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+      return NextResponse.json({ success: true, user: data.user });
+    }
+
+    return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Error updating user";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
