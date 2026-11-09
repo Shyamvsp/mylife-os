@@ -36,6 +36,8 @@ interface AdminUser {
   status: string;
   is_subscribed: boolean;
   days_left: number;
+  role?: string;
+  is_owner?: boolean;
 }
 
 interface PaymentRequest {
@@ -68,6 +70,7 @@ const ADMIN_EMAILS = [
 export default function AdminPage() {
   const supabase = useMemo(() => createClient(), []);
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const [viewerIsOwner, setViewerIsOwner] = useState(false);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
 
@@ -131,6 +134,7 @@ export default function AdminPage() {
       const data = await res.json();
       if (res.ok) {
         setUsers(data.users || []);
+        setViewerIsOwner(Boolean(data.viewer_is_owner));
       }
     } catch (e) {
       console.error(e);
@@ -348,6 +352,25 @@ export default function AdminPage() {
         void loadUsers();
       } else {
         alert(data.error || "Failed to update user.");
+      }
+    } catch {
+      alert("Network error.");
+    }
+  };
+
+    const handleRoleChange = async (userId: string, newRole: string) => {
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, action: "change_role", newRole }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(`✓ User role updated to "${newRole}".`);
+        void loadUsers();
+      } else {
+        alert(data.error || "Failed to change user role.");
       }
     } catch {
       alert("Network error.");
@@ -922,6 +945,7 @@ export default function AdminPage() {
                     <tr className="border-b text-gray-400" style={{ borderColor: "var(--line)" }}>
                       <th className="py-2.5 px-3">User</th>
                       <th className="py-2.5 px-3">Email</th>
+                      <th className="py-2.5 px-3">Role</th>
                       <th className="py-2.5 px-3">Plan Status</th>
                       <th className="py-2.5 px-3">Joined</th>
                       <th className="py-2.5 px-3 text-right">Actions</th>
@@ -953,6 +977,26 @@ export default function AdminPage() {
                           </td>
 
                           <td className="py-3 px-3 font-mono text-gray-400">{u.email}</td>
+
+                          <td className="py-3 px-3">
+                            {isOwner ? (
+                              <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold text-amber-400">👑 Owner</span>
+                            ) : viewerIsOwner ? (
+                              <select
+                                value={u.role || 'customer'}
+                                onChange={(e) => handleRoleChange(u.id, e.target.value)}
+                                className="rounded bg-white/5 border border-white/10 px-1.5 py-0.5 text-[11px] font-semibold text-gray-200"
+                              >
+                                <option value="customer" className="bg-slate-900 text-white">👤 Customer</option>
+                                <option value="moderator" className="bg-slate-900 text-white">⚖️ Moderator</option>
+                                <option value="admin" className="bg-slate-900 text-white">🛡️ Admin</option>
+                              </select>
+                            ) : (
+                              <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-400 capitalize">
+                                {u.role === 'admin' ? '🛡️ Admin' : u.role === 'moderator' ? '⚖️ Moderator' : '👤 Customer'}
+                              </span>
+                            )}
+                          </td>
 
                           <td className="py-3 px-3">
                             {u.is_subscribed ? (

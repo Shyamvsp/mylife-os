@@ -2,29 +2,31 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-const ADMIN_EMAILS = [
+const OWNER_EMAILS = [
   "dasapallivenkatshyamprasad@gmail.com",
   "shyamvsp@mylife.local",
 ];
 
-async function verifyAdmin() {
+async function verifyAdminOrOwner() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) return null;
-  const isAdmin =
-    ADMIN_EMAILS.includes(user.email || "") ||
-    user.user_metadata?.role === "admin" ||
-    user.user_metadata?.display_name === "shyamvsp";
+  const isOwner = OWNER_EMAILS.includes(user.email || "");
+  const role = isOwner
+    ? "owner"
+    : (user.user_metadata?.role as string) || (user.user_metadata?.display_name === "shyamvsp" ? "admin" : "customer");
 
-  return isAdmin ? user : null;
+  const isPrivileged = isOwner || role === "admin" || role === "moderator";
+
+  return isPrivileged ? { user, isOwner, role } : null;
 }
 
 export async function GET() {
-  const admin = await verifyAdmin();
-  if (!admin) {
+  const authState = await verifyAdminOrOwner();
+  if (!authState) {
     return NextResponse.json({ error: "Unauthorized: Admin access required" }, { status: 403 });
   }
 
@@ -44,6 +46,10 @@ export async function GET() {
     const isTrialActive = now < trialEnd;
     const daysLeft = Math.max(0, Math.ceil((trialEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
 
+    const isOwner = OWNER_EMAILS.includes(u.email || "");
+    const rawRole = (u.user_metadata?.role as string) || (u.user_metadata?.display_name === "shyamvsp" ? "admin" : "customer");
+    const role = isOwner ? "owner" : rawRole === "admin" ? "admin" : rawRole === "moderator" ? "moderator" : "customer";
+
     return {
       id: u.id,
       email: u.email,
@@ -54,21 +60,23 @@ export async function GET() {
       status: isSubscribed ? "Pro (₹29/mo)" : isTrialActive ? `Free Trial (${daysLeft}d left)` : "Trial Expired",
       is_subscribed: isSubscribed,
       days_left: daysLeft,
+      role,
+      is_owner: isOwner,
     };
   });
 
-  return NextResponse.json({ users });
+  return NextResponse.json({ users, viewer_is_owner: authState.isOwner, viewer_role: authState.role });
 }
 
 export async function POST(request: Request) {
-  const admin = await verifyAdmin();
-  if (!admin) {
+  const authState = await verifyAdminOrOwner();
+  if (!authState) {
     return NextResponse.json({ error: "Unauthorized: Admin access required" }, { status: 403 });
   }
 
   try {
     const body = await request.json();
-    const { email, password, name, isSubscribed } = body;
+    const { email, password, name, isSubscribed, role } = body;
 
     if (!email || !password) {
       return NextResponse.json({ error: "Email and password are required" }, { status: 400 });
@@ -78,6 +86,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 });
     }
 
+    const assignedRole = authState.isOwner && role ? role : "customer";
     const supabaseAdmin = createAdminClient();
     const trialEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -87,7 +96,7 @@ export async function POST(request: Request) {
       email_confirm: true,
       user_metadata: {
         display_name: (name || email.split("@")[0]).trim(),
-        role: "user",
+        role: assignedRole,
         is_subscribed: Boolean(isSubscribed),
         trial_ends_at: trialEndsAt,
       },
@@ -97,12 +106,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    // Auto-create initial profile entry
     if (data.user) {
       await supabaseAdmin.from("profiles").upsert({
         id: data.user.id,
         display_name: (name || email.split("@")[0]).trim(),
         timezone: "Asia/Kolkata",
+      });
+
+      // Audit Log
+      await supabaseAdmin.from("entries").insert({
+        user_id: authState.user.id,
+        module: "_audit_logs",
+        title: `Created user ${email} with role ${assignedRole}`,
+        details: `Created by ${authState.user.email} (${authState.role})`,
+        entry_date: new Date().toISOString().slice(0, 10),
+        data: { action: "create_user", target_email: email, role: assignedRole },
       });
     }
 
@@ -114,8 +132,8 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const admin = await verifyAdmin();
-  if (!admin) {
+  const authState = await verifyAdminOrOwner();
+  if (!authState) {
     return NextResponse.json({ error: "Unauthorized: Admin access required" }, { status: 403 });
   }
 
@@ -127,16 +145,31 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "userId query param is required" }, { status: 400 });
     }
 
-    if (userId === admin.id) {
-      return NextResponse.json({ error: "Cannot delete the super-admin owner account" }, { status: 400 });
+    if (userId === authState.user.id) {
+      return NextResponse.json({ error: "Cannot delete your own account" }, { status: 400 });
     }
 
     const supabaseAdmin = createAdminClient();
+    const { data: targetUser } = await supabaseAdmin.auth.admin.getUserById(userId);
+    if (targetUser?.user?.email && OWNER_EMAILS.includes(targetUser.user.email)) {
+      return NextResponse.json({ error: "The Owner account cannot be deleted" }, { status: 400 });
+    }
+
     const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    // Audit Log
+    await supabaseAdmin.from("entries").insert({
+      user_id: authState.user.id,
+      module: "_audit_logs",
+      title: `Deleted user ${targetUser?.user?.email || userId}`,
+      details: `Action performed by ${authState.user.email}`,
+      entry_date: new Date().toISOString().slice(0, 10),
+      data: { action: "delete_user", target_id: userId },
+    });
 
     return NextResponse.json({ success: true });
   } catch (err: unknown) {
@@ -146,29 +179,77 @@ export async function DELETE(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const admin = await verifyAdmin();
-  if (!admin) {
+  const authState = await verifyAdminOrOwner();
+  if (!authState) {
     return NextResponse.json({ error: "Unauthorized: Admin access required" }, { status: 403 });
   }
 
   try {
     const body = await request.json();
-    const { userId, action, newPassword } = body;
+    const { userId, action, newPassword, newRole } = body;
 
     if (!userId || !action) {
       return NextResponse.json({ error: "userId and action are required" }, { status: 400 });
     }
 
     const supabaseAdmin = createAdminClient();
+    const { data: targetUser } = await supabaseAdmin.auth.admin.getUserById(userId);
+    const targetEmail = targetUser?.user?.email || "";
+
+    if (OWNER_EMAILS.includes(targetEmail)) {
+      return NextResponse.json({ error: "Owner privileges cannot be modified" }, { status: 400 });
+    }
+
+    if (action === "change_role") {
+      if (!authState.isOwner) {
+        return NextResponse.json({ error: "Only the Owner (Shyam Prasad) can promote or demote roles" }, { status: 403 });
+      }
+      if (!["admin", "moderator", "customer"].includes(newRole)) {
+        return NextResponse.json({ error: "Invalid role. Must be admin, moderator, or customer" }, { status: 400 });
+      }
+
+      const { data, error } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+        user_metadata: {
+          ...targetUser?.user?.user_metadata,
+          role: newRole,
+        },
+      });
+
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+      // Audit Log
+      await supabaseAdmin.from("entries").insert({
+        user_id: authState.user.id,
+        module: "_audit_logs",
+        title: `Changed role of ${targetEmail} to ${newRole}`,
+        details: `Updated by Owner ${authState.user.email}`,
+        entry_date: new Date().toISOString().slice(0, 10),
+        data: { action: "change_role", target_email: targetEmail, new_role: newRole },
+      });
+
+      return NextResponse.json({ success: true, user: data.user });
+    }
 
     if (action === "activate_pro") {
       const { data, error } = await supabaseAdmin.auth.admin.updateUserById(userId, {
         user_metadata: {
+          ...targetUser?.user?.user_metadata,
           is_subscribed: true,
           subscription_status: "pro",
         },
       });
       if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+      // Audit Log
+      await supabaseAdmin.from("entries").insert({
+        user_id: authState.user.id,
+        module: "_audit_logs",
+        title: `Activated Pro (₹29) for ${targetEmail}`,
+        details: `Approved by ${authState.user.email}`,
+        entry_date: new Date().toISOString().slice(0, 10),
+        data: { action: "activate_pro", target_email: targetEmail },
+      });
+
       return NextResponse.json({ success: true, user: data.user });
     }
 
@@ -176,12 +257,24 @@ export async function PATCH(request: Request) {
       const newTrialEnds = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
       const { data, error } = await supabaseAdmin.auth.admin.updateUserById(userId, {
         user_metadata: {
+          ...targetUser?.user?.user_metadata,
           is_subscribed: false,
           subscription_status: "trial",
           trial_ends_at: newTrialEnds,
         },
       });
       if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+      // Audit Log
+      await supabaseAdmin.from("entries").insert({
+        user_id: authState.user.id,
+        module: "_audit_logs",
+        title: `Extended 7-Day trial for ${targetEmail}`,
+        details: `Action by ${authState.user.email}`,
+        entry_date: new Date().toISOString().slice(0, 10),
+        data: { action: "extend_trial", target_email: targetEmail },
+      });
+
       return NextResponse.json({ success: true, user: data.user });
     }
 
@@ -193,6 +286,17 @@ export async function PATCH(request: Request) {
         password: newPassword,
       });
       if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+      // Audit Log
+      await supabaseAdmin.from("entries").insert({
+        user_id: authState.user.id,
+        module: "_audit_logs",
+        title: `Reset password for ${targetEmail}`,
+        details: `Action by ${authState.user.email}`,
+        entry_date: new Date().toISOString().slice(0, 10),
+        data: { action: "reset_password", target_email: targetEmail },
+      });
+
       return NextResponse.json({ success: true, user: data.user });
     }
 
