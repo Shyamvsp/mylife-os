@@ -11,8 +11,8 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "MyLife OS - Personal & Client Operating System",
-  description: "Your private, intelligent operating system with AI voice automation and client/friend collaboration.",
+  title: "MyLife OS 3.0 - Elite Personal Operating System",
+  description: "Your private, intelligent operating system with 12 domain applications and AI voice automation.",
   manifest: "/manifest.json",
   icons: {
     icon: "/icon.svg",
@@ -21,7 +21,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "MyLife OS",
+    title: "MyLife OS 3.0",
   },
 };
 

@@ -5,7 +5,18 @@ import { AiAgentWidget } from "@/components/ai-agent-widget";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Sparkles, ShieldCheck, Clock, LayoutGrid, Search, Home, CreditCard } from "lucide-react";
+import {
+  Sparkles,
+  ShieldCheck,
+  Clock,
+  LayoutGrid,
+  Search,
+  Home,
+  CalendarDays,
+  Activity,
+  Settings as SettingsIcon,
+  Smartphone,
+} from "lucide-react";
 
 const OWNER_EMAILS = [
   "dasapallivenkatshyamprasad@gmail.com",
@@ -32,9 +43,12 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
   const isTrialActive = now < trialEnd;
 
   const isOwner = OWNER_EMAILS.includes(user.email || "");
-  const role = isOwner
+  const role: "owner" | "admin" | "moderator" | "customer" = isOwner
     ? "owner"
-    : (user.user_metadata?.role as string) || (user.user_metadata?.display_name === "shyamvsp" ? "admin" : "customer");
+    : (user.user_metadata?.role as "admin" | "moderator") ||
+      (user.user_metadata?.display_name === "shyamvsp" ? "admin" : "customer");
+
+  const isPrivileged = isOwner || role === "admin" || role === "moderator";
 
   const roleBadge = isOwner ? (
     <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 border border-amber-500/30 px-2.5 py-0.5 text-[11px] font-bold text-amber-400">
@@ -59,8 +73,8 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       {/* Antigravity Gravitational Cursor / Touch Canvas */}
       <AntigravityCanvas />
 
-      {/* Main Navigation Sidebar */}
-      <Sidebar />
+      {/* Main Navigation Sidebar with Strict Role-Based Visibility */}
+      <Sidebar role={role} />
 
       {/* Main Content Area */}
       <main className="relative z-10 min-h-screen lg:pl-68">
@@ -72,7 +86,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
             borderColor: "var(--line)",
           }}
         >
-          {/* Left: User Profile & Quick App Switcher */}
+          {/* Left: User Profile */}
           <div className="flex items-center gap-3 pl-12 lg:pl-0">
             <Link href="/dashboard/settings" className="flex items-center gap-2.5 group">
               {avatarUrl ? (
@@ -98,25 +112,25 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
             {roleBadge}
           </div>
 
-          {/* Center: Search Link / Pill */}
+          {/* Center: Search Link / Filter */}
           <div className="hidden md:flex items-center">
             <Link
-              href="/dashboard/apps"
+              href="/dashboard"
               className="flex items-center gap-2 rounded-xl bg-white/5 border border-white/10 hover:border-indigo-500/40 px-3.5 py-1.5 text-xs text-gray-400 hover:text-white transition w-56"
             >
               <Search size={13} className="text-gray-400" />
-              <span className="flex-1 truncate">Search 12 Applications...</span>
+              <span className="flex-1 truncate">Search your records...</span>
               <kbd className="rounded bg-white/10 px-1 py-0.2 text-[9px] font-mono text-gray-400">⌘K</kbd>
             </Link>
           </div>
 
-          {/* Right: Actions, Trial Countdown, Pro Pill, Theme */}
+          {/* Right: Actions, Subscription Status, Admin Shortcut, Theme */}
           <div className="flex items-center gap-2 sm:gap-2.5">
-            {/* Super Admin Hub Shortcut */}
-            {(isOwner || role === "admin") && (
+            {/* Super Admin Hub Shortcut (Strictly Admin / Owner Only) */}
+            {isPrivileged && (
               <Link
                 href="/dashboard/admin"
-                className="hidden sm:inline-flex items-center gap-1 rounded-full bg-indigo-500/15 border border-indigo-500/30 px-2.5 py-1 text-xs font-bold text-indigo-400 hover:bg-indigo-500/25 transition"
+                className="hidden sm:inline-flex items-center gap-1 rounded-full bg-amber-500/15 border border-amber-500/30 px-2.5 py-1 text-xs font-bold text-amber-400 hover:bg-amber-500/25 transition"
                 title="Super Admin Owner Hub"
               >
                 <ShieldCheck size={13} />
@@ -138,7 +152,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
               {isSubscribed ? (
                 <>
                   <Sparkles size={12} className="text-emerald-400" />
-                  <span>Pro Active (₹29)</span>
+                  <span>Pro Active</span>
                 </>
               ) : isTrialActive ? (
                 <>
@@ -146,8 +160,18 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                   <span>Trial: {hoursLeft > 24 ? `${daysLeft}d left` : `${hoursLeft}h left`}</span>
                 </>
               ) : (
-                <span>Expired · Renew ₹29</span>
+                <span>Renew Membership</span>
               )}
+            </Link>
+
+            {/* Standalone Android App Download */}
+            <Link
+              href="/download"
+              className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/15 border border-cyan-500/30 px-2.5 py-1 text-xs font-bold text-cyan-400 hover:bg-cyan-500/25 transition shadow-sm"
+              title="Download Android App (.apk)"
+            >
+              <Smartphone size={13} />
+              <span className="hidden sm:inline">Get App</span>
             </Link>
 
             <ThemeToggle />
@@ -158,11 +182,11 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
         <div className="relative mx-auto max-w-7xl p-4 pt-6 sm:p-7">{children}</div>
       </main>
 
-      {/* Sticky Mobile Bottom Navigation Bar */}
+      {/* Sticky Mobile Bottom Navigation Bar (Role-Specific) */}
       <nav
         className="fixed bottom-0 inset-x-0 z-30 flex items-center justify-around border-t py-2 px-3 backdrop-blur-lg lg:hidden"
         style={{
-          background: "color-mix(in srgb, var(--card) 92%, #080c16)",
+          background: "color-mix(in srgb, var(--card) 92%, #060913)",
           borderColor: "var(--line)",
         }}
       >
@@ -173,26 +197,57 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
           <Home size={18} />
           <span>Home</span>
         </Link>
+
+        {isPrivileged ? (
+          <>
+            <Link
+              href="/dashboard/apps"
+              className="flex flex-col items-center gap-1 text-[10px] font-semibold text-indigo-400 hover:text-indigo-300"
+            >
+              <LayoutGrid size={18} />
+              <span>12 Apps</span>
+            </Link>
+            <Link
+              href="/dashboard/admin"
+              className="flex flex-col items-center gap-1 text-[10px] font-semibold text-amber-400 hover:text-amber-300"
+            >
+              <ShieldCheck size={18} />
+              <span>Admin</span>
+            </Link>
+          </>
+        ) : (
+          <>
+            <Link
+              href="/dashboard/calendar"
+              className="flex flex-col items-center gap-1 text-[10px] font-semibold text-indigo-400 hover:text-indigo-300"
+            >
+              <CalendarDays size={18} />
+              <span>Schedule</span>
+            </Link>
+            <Link
+              href="/dashboard/analytics"
+              className="flex flex-col items-center gap-1 text-[10px] font-semibold text-purple-400 hover:text-purple-300"
+            >
+              <Activity size={18} />
+              <span>Analytics</span>
+            </Link>
+          </>
+        )}
+
         <Link
-          href="/dashboard/apps"
-          className="flex flex-col items-center gap-1 text-[10px] font-semibold text-indigo-400 hover:text-indigo-300"
+          href="/download"
+          className="flex flex-col items-center gap-1 text-[10px] font-semibold text-cyan-400 hover:text-cyan-300"
         >
-          <LayoutGrid size={18} />
-          <span>12 Apps</span>
+          <Smartphone size={18} />
+          <span>Get App</span>
         </Link>
-        <Link
-          href="/dashboard/subscription"
-          className="flex flex-col items-center gap-1 text-[10px] font-semibold text-emerald-400 hover:text-emerald-300"
-        >
-          <CreditCard size={18} />
-          <span>Pro ₹29</span>
-        </Link>
+
         <Link
           href="/dashboard/settings"
           className="flex flex-col items-center gap-1 text-[10px] font-semibold text-gray-400 hover:text-white"
         >
-          <Search size={18} />
-          <span>Profile</span>
+          <SettingsIcon size={18} />
+          <span>Settings</span>
         </Link>
       </nav>
 

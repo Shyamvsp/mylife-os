@@ -15,6 +15,7 @@ import {
   Layers,
   ChevronRight,
   Zap,
+  Smartphone,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { TWELVE_APPLICATIONS } from "@/lib/modules";
@@ -114,7 +115,7 @@ export default async function DashboardPage() {
           <div className="max-w-2xl">
             <div className="flex items-center gap-2 mb-3">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/15 border border-blue-500/30 px-3 py-1 text-xs font-semibold text-blue-400">
-                <Sparkles size={13} className="text-cyan-400" /> Command Centre · MyLife OS 2.0
+                <Sparkles size={13} className="text-cyan-400" /> Command Centre · MyLife OS 3.0 Elite
               </span>
               <span className="rounded-full bg-white/5 border border-white/10 px-2.5 py-0.5 text-xs text-gray-300">
                 {isSubscribed ? "⭐ Pro Active" : "⏱️ 7-Day Free Trial"}
@@ -131,13 +132,21 @@ export default async function DashboardPage() {
 
           <div className="flex flex-wrap items-center gap-2.5">
             <Link
-              href="/dashboard/apps"
+              href="/download"
+              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 px-4 py-2.5 text-xs font-bold transition shadow-lg shadow-emerald-500/25"
+            >
+              <Smartphone size={15} />
+              <span>Install Android App (.apk)</span>
+            </Link>
+
+            <a
+              href="#all-apps"
               className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 text-xs font-bold transition shadow-lg shadow-indigo-600/30"
             >
               <Layers size={15} />
               <span>Explore 12 Applications</span>
               <ChevronRight size={14} />
-            </Link>
+            </a>
           </div>
         </div>
       </section>
@@ -418,15 +427,15 @@ export default async function DashboardPage() {
       </section>
 
       {/* SUBSECTION 11: All 12 Applications Launcher */}
-      <section className="space-y-4">
+      <section id="all-apps" className="space-y-4 pt-4">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl sm:text-2xl font-bold tracking-tight">The 12 Applications</h2>
             <p className="muted text-xs sm:text-sm">Quick launch into any domain with full live tracking.</p>
           </div>
-          <Link href="/dashboard/apps" className="text-xs font-semibold text-indigo-400 hover:underline">
-            View All 12 Cards →
-          </Link>
+          <span className="text-xs font-semibold text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-1 rounded-lg">
+            12 Active Modules
+          </span>
         </div>
 
         <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">

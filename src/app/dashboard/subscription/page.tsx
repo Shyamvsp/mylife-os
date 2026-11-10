@@ -105,7 +105,7 @@ export default function SubscriptionPage() {
       const data = await res.json();
 
       if (res.ok) {
-        setMessage(data.message || `Payment of ₹${activeAmount} submitted for Admin Shyam's verification.`);
+        setMessage(data.message || `Payment for ${planLabel} (₹${activeAmount}) submitted for Admin Shyam's verification.`);
         setUtr("");
         void fetchStatus();
       } else {

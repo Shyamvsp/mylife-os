@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import {
   LockKeyhole,
@@ -311,7 +312,7 @@ export default function LoginPage() {
         )}
 
         {/* Direct Android APK Download Button */}
-        <div className="mt-5 pt-4 border-t border-white/10 text-center">
+        <div className="mt-5 pt-4 border-t border-white/10 text-center space-y-2">
           <a
             href="/MyLife-OS.apk"
             download="MyLife-OS.apk"
@@ -319,9 +320,13 @@ export default function LoginPage() {
           >
             <Download size={15} /> Download Native Android App (.apk)
           </a>
-          <p className="mt-1.5 text-[10px] muted">
-            Direct 1-tap download for Android without browser shortcuts
-          </p>
+          <div className="flex items-center justify-center gap-3 text-[11px] text-slate-400">
+            <span>Size: 990 KB</span>
+            <span>•</span>
+            <Link href="/download" className="text-cyan-400 hover:underline">
+              Installation Guide &rarr;
+            </Link>
+          </div>
         </div>
 
         {/* Footer */}
