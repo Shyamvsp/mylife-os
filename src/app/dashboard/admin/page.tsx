@@ -47,6 +47,8 @@ interface PaymentRequest {
   user_email: string;
   user_name: string;
   amount: number;
+  plan?: string;
+  plan_name?: string;
   status: "pending" | "approved" | "rejected";
   rejection_reason: string | null;
   submitted_at: string;
@@ -100,6 +102,17 @@ export default function AdminPage() {
   const [copiedBio, setCopiedBio] = useState(false);
   const [copiedCreds, setCopiedCreds] = useState(false);
   const [copiedUtr, setCopiedUtr] = useState<string | null>(null);
+
+  // Dynamic Pricing & Discount State
+  const [monthlyPrice, setMonthlyPrice] = useState(29);
+  const [threeMonthPrice, setThreeMonthPrice] = useState(59);
+  const [threeMonthOriginalPrice, setThreeMonthOriginalPrice] = useState(87);
+  const [threeMonthDiscountTag, setThreeMonthDiscountTag] = useState("Save ₹28 (32% OFF)");
+  const [trialDays, setTrialDays] = useState(7);
+  const [promoActive, setPromoActive] = useState(true);
+  const [promoText, setPromoText] = useState("🔥 Special Discount: 3 Months for only ₹59 instead of ₹87!");
+  const [pricingNotice, setPricingNotice] = useState("");
+  const [savingPricing, setSavingPricing] = useState(false);
 
   // Check Admin permission
   useEffect(() => {
@@ -180,6 +193,7 @@ export default function AdminPage() {
       void loadUsers();
       void loadPayments();
       void loadTrialRequests();
+      void loadPricing();
     }
   }, [isAdmin, loadUsers, loadPayments, loadTrialRequests]);
 
@@ -374,6 +388,62 @@ export default function AdminPage() {
       }
     } catch {
       alert("Network error.");
+    }
+  };
+
+    const loadPricing = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/pricing");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.pricing) {
+          setMonthlyPrice(data.pricing.monthly_price);
+          setThreeMonthPrice(data.pricing.three_month_price);
+          setThreeMonthOriginalPrice(data.pricing.three_month_original_price);
+          setThreeMonthDiscountTag(data.pricing.three_month_discount_tag);
+          setTrialDays(data.pricing.trial_days);
+          setPromoActive(data.pricing.promo_active);
+          setPromoText(data.pricing.promo_text);
+          if (data.pricing.upi_id) setUpiId(data.pricing.upi_id);
+          if (data.pricing.payee_name) setPayeeName(data.pricing.payee_name);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  const handleSavePricing = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingPricing(true);
+    setPricingNotice("");
+    try {
+      const res = await fetch("/api/admin/pricing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          monthly_price: monthlyPrice,
+          three_month_price: threeMonthPrice,
+          three_month_original_price: threeMonthOriginalPrice,
+          three_month_discount_tag: threeMonthDiscountTag,
+          trial_days: trialDays,
+          upi_id: upiId,
+          payee_name: payeeName,
+          promo_active: promoActive,
+          promo_text: promoText,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPricingNotice("✅ Pricing, 3-Month Discount (₹59), and Trial settings saved to cloud database!");
+        setTimeout(() => setPricingNotice(""), 4000);
+      } else {
+        alert(data.error || "Failed to save pricing.");
+      }
+    } catch {
+      alert("Network error saving pricing.");
+    } finally {
+      setSavingPricing(false);
     }
   };
 
@@ -625,7 +695,7 @@ export default function AdminPage() {
             </div>
             <div>
               <h2 className="text-lg font-bold flex items-center gap-2">
-                Incoming UPI Payment Verifications (₹29)
+                Incoming UPI Payment Verifications
                 {pendingPayments.length > 0 && (
                   <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-bold text-white animate-pulse">
                     {pendingPayments.length} Pending
@@ -687,12 +757,15 @@ export default function AdminPage() {
                         </div>
                       </td>
 
-                      <td className="py-3 px-3 font-bold text-emerald-500">₹{p.amount}.00</td>
+                      <td className="py-3 px-3">
+                        <span className="font-bold text-emerald-400">₹{p.amount}.00</span>
+                        <div className="text-[10px] text-gray-400 font-medium">{p.plan_name || (p.amount >= 59 ? "3 Months" : "1 Month")}</div>
+                      </td>
 
                       <td className="py-3 px-3">
                         {p.status === "approved" ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-0.5 font-bold text-emerald-500">
-                            <CheckCircle2 size={12} /> Approved (₹29)
+                            <CheckCircle2 size={12} /> Approved (₹{p.amount})
                           </span>
                         ) : p.status === "rejected" ? (
                           <span
@@ -859,6 +932,126 @@ export default function AdminPage() {
                 </div>
               </div>
             )}
+          </div>
+
+                    {/* Dynamic Subscription Pricing & 3-Month Discount Controls */}
+          <div className="panel p-6 space-y-5 border-amber-500/30 bg-gradient-to-br from-amber-950/20 via-slate-900/40 to-slate-900/60">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="grid h-8 w-8 place-items-center rounded-lg bg-amber-500 text-black font-extrabold text-sm shadow">
+                  ₹
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-amber-300">Subscription & Discount Controls</h2>
+                  <p className="muted text-xs">Customize your prices and discounts anytime. Updates the whole site live!</p>
+                </div>
+              </div>
+            </div>
+
+            <form onSubmit={handleSavePricing} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="block text-xs font-semibold">
+                  1-Month Pro Price (INR ₹)
+                  <input
+                    required
+                    type="number"
+                    value={monthlyPrice}
+                    onChange={(e) => setMonthlyPrice(Number(e.target.value))}
+                    className="field mt-1 text-sm font-bold text-emerald-400"
+                  />
+                </label>
+
+                <label className="block text-xs font-semibold">
+                  Free Trial Duration (Days)
+                  <input
+                    required
+                    type="number"
+                    value={trialDays}
+                    onChange={(e) => setTrialDays(Number(e.target.value))}
+                    className="field mt-1 text-sm font-bold text-indigo-400"
+                  />
+                </label>
+              </div>
+
+              {/* 3-Month Special Discount Section */}
+              <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-300 uppercase tracking-wider">
+                    🔥 3-Month Special Discount Plan
+                  </span>
+                  <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded">
+                    Save ₹{threeMonthOriginalPrice - threeMonthPrice}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="block text-xs font-semibold">
+                    Discounted Offer Price (e.g. ₹59)
+                    <input
+                      required
+                      type="number"
+                      value={threeMonthPrice}
+                      onChange={(e) => setThreeMonthPrice(Number(e.target.value))}
+                      className="field mt-1 text-sm font-bold text-emerald-400"
+                    />
+                  </label>
+
+                  <label className="block text-xs font-semibold">
+                    Original Price to Strikethrough (e.g. ₹87)
+                    <input
+                      required
+                      type="number"
+                      value={threeMonthOriginalPrice}
+                      onChange={(e) => setThreeMonthOriginalPrice(Number(e.target.value))}
+                      className="field mt-1 text-sm font-mono text-gray-400"
+                    />
+                  </label>
+                </div>
+
+                <label className="block text-xs font-semibold">
+                  Discount Badge Text
+                  <input
+                    required
+                    value={threeMonthDiscountTag}
+                    onChange={(e) => setThreeMonthDiscountTag(e.target.value)}
+                    placeholder="e.g. Save ₹28 (32% OFF)"
+                    className="field mt-1 text-xs"
+                  />
+                </label>
+              </div>
+
+              {/* Promo Banner Settings */}
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={promoActive}
+                    onChange={(e) => setPromoActive(e.target.checked)}
+                    className="rounded text-amber-500"
+                  />
+                  <span>Show Promotional Discount Banner on Subscription Page</span>
+                </label>
+
+                {promoActive && (
+                  <input
+                    value={promoText}
+                    onChange={(e) => setPromoText(e.target.value)}
+                    placeholder="Banner text to display"
+                    className="field text-xs text-amber-200 w-full"
+                  />
+                )}
+              </div>
+
+              {pricingNotice && <p className="text-xs text-emerald-400 font-bold">{pricingNotice}</p>}
+
+              <button
+                type="submit"
+                disabled={savingPricing}
+                className="btn btn-primary w-full text-xs font-bold !bg-amber-500 hover:!bg-amber-600 !text-black shadow-md shadow-amber-500/20"
+              >
+                {savingPricing ? "Saving Settings..." : "Save Pricing & 3-Month Discounts"}
+              </button>
+            </form>
           </div>
 
           {/* UPI QR Payment Setup */}

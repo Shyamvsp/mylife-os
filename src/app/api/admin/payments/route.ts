@@ -41,17 +41,22 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const payments = (data || []).map((row) => ({
-    id: row.id,
-    user_id: row.user_id,
-    utr: row.title,
-    user_email: (row.data as Record<string, unknown>)?.user_email || "Unknown",
-    user_name: (row.data as Record<string, unknown>)?.user_name || "User",
-    amount: (row.data as Record<string, unknown>)?.amount || 29,
-    status: (row.data as Record<string, unknown>)?.status || "pending",
-    rejection_reason: (row.data as Record<string, unknown>)?.rejection_reason || null,
-    submitted_at: (row.data as Record<string, unknown>)?.submitted_at || row.created_at,
-  }));
+  const payments = (data || []).map((row) => {
+    const rData = (row.data as Record<string, unknown>) || {};
+    return {
+      id: row.id,
+      user_id: row.user_id,
+      utr: row.title,
+      user_email: rData.user_email || "Unknown",
+      user_name: rData.user_name || "User",
+      amount: rData.amount || 29,
+      plan: rData.plan || "1_month",
+      plan_name: rData.plan_name || (rData.amount === 59 ? "3 Months Pro (₹59)" : "1 Month Pro (₹29)"),
+      status: rData.status || "pending",
+      rejection_reason: rData.rejection_reason || null,
+      submitted_at: rData.submitted_at || row.created_at,
+    };
+  });
 
   return NextResponse.json({ payments });
 }
@@ -85,7 +90,8 @@ export async function POST(request: Request) {
     }
 
     const currentData = (record.data || {}) as Record<string, unknown>;
-    const now = new Date().toISOString();
+    const now = new Date();
+    const nowIso = now.toISOString();
 
     // 2. Fetch target user
     const { data: userData, error: userErr } = await supabaseAdmin.auth.admin.getUserById(userId);
@@ -94,6 +100,10 @@ export async function POST(request: Request) {
     }
 
     const targetUser = userData.user;
+    const amount = Number(currentData.amount) || 29;
+    const isThreeMonths = currentData.plan === "3_months" || amount >= 59;
+    const expiryDays = isThreeMonths ? 90 : 30;
+    const expiresAt = new Date(now.getTime() + expiryDays * 24 * 60 * 60 * 1000).toISOString();
 
     if (action === "approve") {
       // Mark entry as approved
@@ -103,8 +113,9 @@ export async function POST(request: Request) {
           data: {
             ...currentData,
             status: "approved",
-            approved_at: now,
+            approved_at: nowIso,
             approved_by: admin.email,
+            subscription_expires_at: expiresAt,
           },
         })
         .eq("id", paymentId);
@@ -114,9 +125,12 @@ export async function POST(request: Request) {
         user_metadata: {
           ...targetUser.user_metadata,
           is_subscribed: true,
-          subscription_status: "active",
-          subscription_paid_at: now,
+          subscription_status: "pro",
+          subscription_paid_at: nowIso,
+          subscription_expires_at: expiresAt,
           subscription_utr: record.title,
+          subscription_amount: amount,
+          subscription_plan: isThreeMonths ? "3_months" : "1_month",
           subscription_rejection_reason: null,
         },
       });
@@ -125,13 +139,26 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: updateErr.message }, { status: 500 });
       }
 
-      return NextResponse.json({ success: true, message: `Payment of ₹29 for ${targetUser.email} approved! Pro unlocked.` });
+      // Record audit log
+      await supabaseAdmin.from("entries").insert({
+        user_id: admin.id,
+        module: "_audit_logs",
+        title: `Approved payment of ₹${amount} for ${targetUser.email}`,
+        details: `Plan: ${isThreeMonths ? "3 Months" : "1 Month"} (${expiryDays} days) by Admin ${admin.email}`,
+        entry_date: nowIso.slice(0, 10),
+        data: { action: "approve_payment", amount, user_email: targetUser.email, utr: record.title },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `Payment of ₹${amount} (${isThreeMonths ? "3 Months" : "1 Month"}) for ${targetUser.email} approved! Pro unlocked for ${expiryDays} days.`,
+      });
     }
 
     if (action === "reject") {
       const reason =
         rejectionReason ||
-        "Payment rejected: Lower amount received (e.g. ₹1) instead of required ₹29 subscription fee.";
+        `Payment rejected: Expected ₹${amount} but received lower amount or unverified UTR.`;
 
       // Mark entry as rejected
       await supabaseAdmin
@@ -141,14 +168,14 @@ export async function POST(request: Request) {
             ...currentData,
             status: "rejected",
             rejection_reason: reason,
-            rejected_at: now,
+            rejected_at: nowIso,
             rejected_by: admin.email,
           },
         })
         .eq("id", paymentId);
 
-      // Set user_metadata to rejected (not subscribed)
-      const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+      // Reset user metadata
+      await supabaseAdmin.auth.admin.updateUserById(userId, {
         user_metadata: {
           ...targetUser.user_metadata,
           is_subscribed: false,
@@ -157,16 +184,12 @@ export async function POST(request: Request) {
         },
       });
 
-      if (updateErr) {
-        return NextResponse.json({ error: updateErr.message }, { status: 500 });
-      }
-
-      return NextResponse.json({ success: true, message: `Payment rejected. User notified of lower amount/invalid transaction.` });
+      return NextResponse.json({ success: true, message: `Payment for ${targetUser.email} rejected.` });
     }
 
-    return NextResponse.json({ error: "Invalid action. Use 'approve' or 'reject'" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Error processing payment action";
+    const message = err instanceof Error ? err.message : "Error processing payment";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
