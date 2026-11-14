@@ -88,11 +88,16 @@ export default async function DashboardPage() {
     (e) => (e.data as Record<string, unknown>)?.status !== "Completed"
   );
 
-  // 8. Habit Completion
+  // 8. Habit Completion (Infinity Days + Daily Check-off Support)
   const habitEntries = entries.filter((e) => e.module === "habits" || e.module === "goals");
-  const completedHabitsToday = habitEntries.filter(
-    (e) => e.entry_date === todayStr && ((e.data as Record<string, unknown>)?.completed === "Yes" || (e.data as Record<string, unknown>)?.status === "Completed")
-  );
+  const completedHabitsToday = habitEntries.filter((e) => {
+    const d = e.data as Record<string, unknown>;
+    const completedDates = Array.isArray(d?.completed_dates) ? (d.completed_dates as string[]) : [];
+    return (
+      completedDates.includes(todayStr) ||
+      (e.entry_date === todayStr && (d?.completed === "Yes" || d?.status === "Completed"))
+    );
+  });
 
   // 9. Upcoming Calendar Events
   const upcomingEvents = entries

@@ -109,7 +109,7 @@ input, textarea, select, button {
   color: var(--muted);
 }
 
-/* Animations for MyLife OS 3.0 */
+/* Animations for MyLife OS 3.0 Ultra-Premium */
 @keyframes spinSlow {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
@@ -121,10 +121,10 @@ input, textarea, select, button {
 
 @keyframes glowPulse {
   0%, 100% {
-    box-shadow: 0 0 15px rgba(99, 102, 241, 0.15);
+    box-shadow: 0 0 15px rgba(99, 102, 241, 0.18), inset 0 0 15px rgba(99, 102, 241, 0.05);
   }
   50% {
-    box-shadow: 0 0 25px rgba(99, 102, 241, 0.35);
+    box-shadow: 0 0 32px rgba(99, 102, 241, 0.42), inset 0 0 20px rgba(99, 102, 241, 0.12);
   }
 }
 
@@ -133,12 +133,109 @@ input, textarea, select, button {
 }
 
 @keyframes floatSlow {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-4px); }
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-5px) rotate(0.4deg); }
 }
 
 .animate-float {
   animation: floatSlow 4s ease-in-out infinite;
+}
+
+/* Shimmer reflection sweep (Linear & Apple style) */
+@keyframes shimmerSweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+.animate-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.animate-shimmer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.06) 50%,
+    transparent 100%
+  );
+  transform: skewX(-20deg);
+  animation: shimmerSweep 3.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  pointer-events: none;
+}
+
+/* Flame flicker animation for streak */
+@keyframes flameFlicker {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 4px #f59e0b); }
+  50% { transform: scale(1.12); filter: drop-shadow(0 0 12px #ea580c); }
+}
+
+.animate-flame {
+  animation: flameFlicker 1.8s ease-in-out infinite;
+}
+
+/* Card interactive float and micro-interaction */
+.card-interactive {
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.3s ease;
+}
+
+.card-interactive:hover {
+  transform: translateY(-4px) scale(1.008);
+  box-shadow: 0 16px 36px -10px rgba(0, 0, 0, 0.5),
+              0 0 20px rgba(99, 102, 241, 0.15);
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.card-interactive:active {
+  transform: scale(0.985);
+}
+
+/* Mobile haptic touch bounce feedback */
+.haptic-press {
+  transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.haptic-press:active {
+  transform: scale(0.95);
+}
+
+/* Animated gradient border glow */
+@keyframes borderRotate {
+  0% { filter: hue-rotate(0deg); }
+  100% { filter: hue-rotate(360deg); }
+}
+
+.animated-gradient-border {
+  background: linear-gradient(60deg, #6366f1, #a855f7, #ec4899, #06b6d4, #6366f1);
+  background-size: 300% 300%;
+  animation: borderRotate 8s linear infinite;
+}
+
+/* Custom sleek dark scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(6, 9, 19, 0.6);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.3);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.6);
 }
 
 .no-scrollbar::-webkit-scrollbar {
