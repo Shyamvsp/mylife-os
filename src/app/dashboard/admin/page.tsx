@@ -23,6 +23,12 @@ import {
   CreditCard,
   UserCheck,
   MessageCircle,
+  FileText,
+  Upload,
+  Download,
+  Globe,
+  Folder,
+  ExternalLink,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -38,6 +44,24 @@ interface AdminUser {
   days_left: number;
   role?: string;
   is_owner?: boolean;
+}
+
+
+interface AdminDocItem {
+  id: string;
+  title: string;
+  description: string | null;
+  date: string;
+  createdAt: string;
+  fileName: string;
+  fileSize: number;
+  fileType: string;
+  downloadUrl: string;
+  storagePath: string;
+  scope: "admin_only" | "everyone";
+  category: string;
+  uploadedBy: string;
+  downloadCount: number;
 }
 
 interface PaymentRequest {
@@ -108,6 +132,21 @@ export default function AdminPage() {
   const [threeMonthPrice, setThreeMonthPrice] = useState(59);
   const [threeMonthOriginalPrice, setThreeMonthOriginalPrice] = useState(87);
   const [threeMonthDiscountTag, setThreeMonthDiscountTag] = useState("Save ₹28 (32% OFF)");
+
+  // Enterprise Document Vault State
+  const [adminDocs, setAdminDocs] = useState<AdminDocItem[]>([]);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+  const [docFile, setDocFile] = useState<File | null>(null);
+  const [docTitle, setDocTitle] = useState("");
+  const [docDesc, setDocDesc] = useState("");
+  const [docCategory, setDocCategory] = useState("General");
+  const [docScope, setDocScope] = useState<"admin_only" | "everyone">("admin_only");
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [docNotice, setDocNotice] = useState("");
+  const [docSearch, setDocSearch] = useState("");
+  const [docFilterScope, setDocFilterScope] = useState<"all" | "admin_only" | "everyone">("all");
+  const [copiedDocId, setCopiedDocId] = useState<string | null>(null);
+
   const [trialDays, setTrialDays] = useState(7);
   const [promoActive, setPromoActive] = useState(true);
   const [promoText, setPromoText] = useState("🔥 Special Discount: 3 Months for only ₹59 instead of ₹87!");
@@ -188,12 +227,11 @@ export default function AdminPage() {
     }
   }, []);
 
-  useEffect(() => {
+    useEffect(() => {
     if (isAdmin) {
       void loadUsers();
       void loadPayments();
       void loadTrialRequests();
-      void loadPricing();
     }
   }, [isAdmin, loadUsers, loadPayments, loadTrialRequests]);
 
@@ -445,6 +483,98 @@ export default function AdminPage() {
     } finally {
       setSavingPricing(false);
     }
+  };
+
+  
+  const loadAdminDocs = useCallback(async () => {
+    setLoadingDocs(true);
+    try {
+      const res = await fetch("/api/admin/documents");
+      if (res.ok) {
+        const data = await res.json();
+        setAdminDocs(data.documents || []);
+      }
+    } catch (e) {
+      console.error("Error loading admin documents:", e);
+    } finally {
+      setLoadingDocs(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isAdmin) {
+      void loadPricing();
+      void loadAdminDocs();
+    }
+  }, [isAdmin, loadPricing, loadAdminDocs]);
+
+  const handleUploadDoc = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!docFile) {
+      alert("Please choose a file to upload.");
+      return;
+    }
+    setUploadingDoc(true);
+    setDocNotice("");
+
+    try {
+      const fd = new FormData();
+      fd.append("file", docFile);
+      fd.append("title", docTitle.trim() || docFile.name);
+      fd.append("description", docDesc.trim());
+      fd.append("category", docCategory);
+      fd.append("scope", docScope);
+
+      const res = await fetch("/api/admin/documents", {
+        method: "POST",
+        body: fd,
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setDocNotice(`✅ Document "${data.document?.title || docFile.name}" stored in vault and synced!`);
+        setDocFile(null);
+        setDocTitle("");
+        setDocDesc("");
+        const fileInput = document.getElementById("admin-doc-file-input") as HTMLInputElement;
+        if (fileInput) fileInput.value = "";
+        void loadAdminDocs();
+        setTimeout(() => setDocNotice(""), 4000);
+      } else {
+        alert(data.error || "Failed to upload document.");
+      }
+    } catch {
+      alert("Network error while uploading document.");
+    } finally {
+      setUploadingDoc(false);
+    }
+  };
+
+  const handleDeleteDoc = async (id: string, title: string) => {
+    if (!window.confirm(`Delete document "${title}" permanently from cloud storage?`)) return;
+    try {
+      const res = await fetch("/api/admin/documents", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (res.ok) {
+        setAdminDocs((prev) => prev.filter((d) => d.id !== id));
+      } else {
+        const data = await res.json();
+        alert(data.error || "Failed to delete document.");
+      }
+    } catch {
+      alert("Network error.");
+    }
+  };
+
+  const copyDocShareLink = (doc: AdminDocItem) => {
+    const origin = typeof window !== "undefined" ? window.location.origin : "https://mylife-os-silk.vercel.app";
+    const directUrl = `${origin}/api/admin/documents/download?id=${doc.id}`;
+    void navigator.clipboard.writeText(directUrl);
+    setCopiedDocId(doc.id);
+    setTimeout(() => setCopiedDocId(null), 3000);
   };
 
   const saveUpiSettings = (e: React.FormEvent) => {
@@ -828,6 +958,333 @@ export default function AdminPage() {
           </div>
         )}
       </div>
+
+      
+      {/* SECTION 3: Enterprise Document & File Distribution Vault (Admin-Only & Public Broadcast) */}
+      <div className="panel p-6 space-y-6 border-sky-500/30 bg-gradient-to-b from-sky-950/20 via-slate-900/60 to-transparent">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="grid h-10 w-10 place-items-center rounded-2xl bg-gradient-to-tr from-sky-600 to-indigo-600 text-white shadow-lg">
+              <Folder size={20} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-bold text-white">Enterprise Document &amp; File Distribution Vault</h2>
+                <span className="rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/40 px-2.5 py-0.5 text-[11px] font-bold">
+                  Cloud Synced
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">
+                Post any document. Choose <strong className="text-amber-300">Admin Only</strong> (private for you &amp; admins on any phone) or <strong className="text-emerald-300">Everyone</strong> (instantly broadcasts to all customers in Personal Files).
+              </p>
+            </div>
+          </div>
+
+          <button onClick={loadAdminDocs} className="btn btn-ghost text-xs font-bold shrink-0">
+            <RefreshCw size={13} className={loadingDocs ? "animate-spin" : ""} /> Refresh Documents
+          </button>
+        </div>
+
+        {/* Upload Form Box */}
+        <form onSubmit={handleUploadDoc} className="rounded-2xl border border-sky-500/20 bg-black/20 p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-sky-300 flex items-center gap-2">
+              <Upload size={16} /> Upload New Document into Vault
+            </h3>
+            <span className="text-[11px] text-slate-400">PDF, Word, Excel, Images, ZIP, APK (Up to 50 MB)</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-300 mb-1">Select File *</label>
+              <input
+                id="admin-doc-file-input"
+                type="file"
+                required
+                onChange={(e) => {
+                  const f = e.target.files?.[0] || null;
+                  setDocFile(f);
+                  if (f && !docTitle) setDocTitle(f.name.replace(/\.[^/.]+$/, ""));
+                }}
+                className="w-full text-xs text-slate-300 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-sky-600 file:text-white hover:file:bg-sky-500 cursor-pointer"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-300 mb-1">Document Title</label>
+              <input
+                type="text"
+                placeholder="e.g. Terms Agreement, Q4 Report, Release Notes"
+                value={docTitle}
+                onChange={(e) => setDocTitle(e.target.value)}
+                className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-300 mb-1">Category</label>
+              <select
+                value={docCategory}
+                onChange={(e) => setDocCategory(e.target.value)}
+                className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+              >
+                <option value="General">General Platform</option>
+                <option value="Legal">Legal &amp; Agreements</option>
+                <option value="Financial">Financial Reports</option>
+                <option value="Technical">Technical &amp; Code</option>
+                <option value="Guides">Guides &amp; Manuals</option>
+                <option value="Release">Release Notes / APK</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-300 mb-1">Description / Notes (Optional)</label>
+            <input
+              type="text"
+              placeholder="Brief details about what this document is for..."
+              value={docDesc}
+              onChange={(e) => setDocDesc(e.target.value)}
+              className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+            />
+          </div>
+
+          {/* Scope Selector: Admin-Only vs Everyone */}
+          <div className="pt-2 border-t border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-4">
+              <span className="text-xs font-bold text-slate-300">Who Can Access?</span>
+
+              <label className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border cursor-pointer transition text-xs font-bold ${
+                docScope === "admin_only"
+                  ? "bg-amber-500/20 border-amber-500/50 text-amber-300 shadow-sm"
+                  : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
+              }`}>
+                <input
+                  type="radio"
+                  name="doc_scope"
+                  value="admin_only"
+                  checked={docScope === "admin_only"}
+                  onChange={() => setDocScope("admin_only")}
+                  className="hidden"
+                />
+                <Lock size={13} />
+                <span>Admin &amp; Team Only (🔒 Private)</span>
+              </label>
+
+              <label className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border cursor-pointer transition text-xs font-bold ${
+                docScope === "everyone"
+                  ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-300 shadow-sm"
+                  : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
+              }`}>
+                <input
+                  type="radio"
+                  name="doc_scope"
+                  value="everyone"
+                  checked={docScope === "everyone"}
+                  onChange={() => setDocScope("everyone")}
+                  className="hidden"
+                />
+                <Globe size={13} />
+                <span>Everyone (🌐 Broadcast to Customers)</span>
+              </label>
+            </div>
+
+            <button
+              type="submit"
+              disabled={uploadingDoc}
+              className="btn btn-primary !py-2 !px-5 text-xs font-bold flex items-center gap-2 shrink-0 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 shadow-md shadow-sky-600/30"
+            >
+              {uploadingDoc ? <RefreshCw size={14} className="animate-spin" /> : <Upload size={14} />}
+              <span>{uploadingDoc ? "Uploading to Cloud..." : "Upload & Distribute Document"}</span>
+            </button>
+          </div>
+
+          {docNotice && (
+            <p className="text-xs text-emerald-400 font-semibold pt-1">{docNotice}</p>
+          )}
+        </form>
+
+        {/* Document Library Table */}
+        <div className="space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-white">Stored Documents in Cloud Vault</h3>
+              <span className="text-[11px] text-slate-400 bg-white/5 px-2 py-0.5 rounded-full border border-white/10 font-mono">
+                {adminDocs.length} Total Files
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="Search documents..."
+                value={docSearch}
+                onChange={(e) => setDocSearch(e.target.value)}
+                className="bg-black/30 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-sky-500 w-48"
+              />
+
+              <div className="flex items-center gap-1 text-[11px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => setDocFilterScope("all")}
+                  className={`px-2.5 py-1 rounded-lg border transition ${
+                    docFilterScope === "all" ? "bg-white/15 text-white border-white/30" : "text-slate-400 border-transparent hover:text-white"
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDocFilterScope("admin_only")}
+                  className={`px-2.5 py-1 rounded-lg border transition ${
+                    docFilterScope === "admin_only" ? "bg-amber-500/20 text-amber-300 border-amber-500/40" : "text-slate-400 border-transparent hover:text-white"
+                  }`}
+                >
+                  🔒 Admin
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDocFilterScope("everyone")}
+                  className={`px-2.5 py-1 rounded-lg border transition ${
+                    docFilterScope === "everyone" ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40" : "text-slate-400 border-transparent hover:text-white"
+                  }`}
+                >
+                  🌐 Everyone
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {loadingDocs ? (
+            <div className="p-12 text-center text-slate-400 space-y-2">
+              <RefreshCw size={20} className="animate-spin mx-auto text-sky-400" />
+              <p className="text-xs">Loading documents...</p>
+            </div>
+          ) : adminDocs.length === 0 ? (
+            <div className="p-8 text-center border border-dashed border-slate-800 rounded-2xl bg-black/20 text-xs text-slate-400">
+              No documents uploaded yet. Use the upload box above to post your first document.
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-black/30">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-slate-800 text-slate-400 text-[10px] uppercase font-bold tracking-wider">
+                    <th className="py-3 px-4">Document Title</th>
+                    <th className="py-3 px-3">Scope / Visibility</th>
+                    <th className="py-3 px-3">Category</th>
+                    <th className="py-3 px-3">File Size</th>
+                    <th className="py-3 px-3">Uploaded</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {adminDocs
+                    .filter((d) => {
+                      const matchQuery =
+                        d.title.toLowerCase().includes(docSearch.toLowerCase()) ||
+                        d.fileName.toLowerCase().includes(docSearch.toLowerCase()) ||
+                        (d.description || "").toLowerCase().includes(docSearch.toLowerCase());
+                      if (!matchQuery) return false;
+                      if (docFilterScope === "admin_only") return d.scope === "admin_only";
+                      if (docFilterScope === "everyone") return d.scope === "everyone";
+                      return true;
+                    })
+                    .map((doc) => {
+                      const sizeFormatted =
+                        doc.fileSize > 1024 * 1024
+                          ? `${(doc.fileSize / (1024 * 1024)).toFixed(1)} MB`
+                          : `${Math.round(doc.fileSize / 1024)} KB`;
+                      const isCopied = copiedDocId === doc.id;
+
+                      return (
+                        <tr key={doc.id} className="hover:bg-white/5 transition">
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2.5">
+                              <div className="p-2 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20 shrink-0">
+                                <FileText size={16} />
+                              </div>
+                              <div className="min-w-0">
+                                <h4 className="font-bold text-white truncate text-xs sm:text-sm">{doc.title}</h4>
+                                <p className="text-[11px] text-slate-400 font-mono truncate">{doc.fileName}</p>
+                                {doc.description && (
+                                  <p className="text-[10px] text-slate-500 truncate pt-0.5">{doc.description}</p>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-3">
+                            {doc.scope === "admin_only" ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-[10px] font-bold text-amber-400">
+                                <Lock size={10} /> Admin Only
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-bold text-emerald-400">
+                                <Globe size={10} /> Everyone
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-3 text-slate-400 font-medium">{doc.category}</td>
+                          <td className="py-3 px-3 text-slate-400 font-mono">{sizeFormatted}</td>
+                          <td className="py-3 px-3 text-slate-400 font-mono text-[11px]">
+                            {doc.date || doc.createdAt?.slice(0, 10)}
+                          </td>
+
+                          <td className="py-3 px-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <a
+                                href={doc.downloadUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="btn btn-ghost !p-1.5 text-slate-400 hover:text-white"
+                                title="Preview document in new tab"
+                              >
+                                <ExternalLink size={13} />
+                              </a>
+
+                              <a
+                                href={`/api/admin/documents/download?id=${doc.id}`}
+                                download={doc.fileName}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="btn btn-primary !py-1 !px-2.5 text-xs font-bold flex items-center gap-1 shadow-sm"
+                                title="Download Document Directly"
+                              >
+                                <Download size={13} />
+                                <span>Download</span>
+                              </a>
+
+                              <button
+                                type="button"
+                                onClick={() => copyDocShareLink(doc)}
+                                className="btn btn-ghost !py-1 !px-2 text-xs text-sky-400 hover:text-sky-300"
+                                title="Copy direct download link to share anywhere"
+                              >
+                                {isCopied ? <Check size={13} /> : <Copy size={13} />}
+                                <span className="hidden sm:inline">{isCopied ? "Copied!" : "Link"}</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteDoc(doc.id, doc.title)}
+                                className="btn btn-ghost !p-1.5 text-slate-500 hover:text-rose-400"
+                                title="Delete document permanently"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left Column: Add New User Form & UPI QR Settings */}

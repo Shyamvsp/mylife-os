@@ -558,14 +558,13 @@ export default function GoalsAndHabitsPlannerPage() {
               <span>Sound: {chimeEnabled ? "On" : "Muted"}</span>
             </button>
 
-            {habits.length === 0 && (
-              <button
-                onClick={populateSampleTemplate}
-                className="text-[11px] font-bold text-amber-400 hover:underline bg-amber-500/10 px-2.5 py-1 rounded-xl border border-amber-500/20"
-              >
-                Load Sample Habits (From Picture) ✨
-              </button>
-            )}
+            <button
+              onClick={populateSampleTemplate}
+              className="text-[11px] font-bold text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 px-2.5 py-1 rounded-xl border border-amber-500/30 transition flex items-center gap-1 shadow-sm"
+              title="Load the 10 daily, 3 weekly, and 4 monthly habits from the desk calendar picture"
+            >
+              <span>Load Picture Routine (17 Habits) ✨</span>
+            </button>
           </div>
         </div>
 
